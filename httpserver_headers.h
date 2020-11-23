@@ -39,7 +39,8 @@ int f_fetch_file(char *char_file);
 
 /* Modules */
 void *f_void_get_module(char *buffer,char *file_name,int clientSocket);
-void *f_void_put_module(char *buffer,char *file_name,int clientSocket);
+void monolothic_automatic_lock_put(struct http_object *);
+void f_void_put_module(struct http_object *http_data);
 void handle_all_request(struct marshall *message);
 void *handle_server(int fd,struct marshall *message);
 void *worker_thread(void *args);
@@ -47,8 +48,44 @@ void *worker_thread(void *args);
 /* Command line Node * Parsing Flags */
 void f_getopt(int argc, char *argv[], struct command_line_inputs *configs);
 
-struct command_line_inputs;
-struct marshall;
+
+/* Holds redunancy */
+struct marshall{
+    char *carrier_msg;
+    int is_redundant;
+    int id;
+
+};
+
+struct command_line_inputs{
+    int N_threads;
+    bool Redundancy;
+};
+
+struct http_object{
+    char* file_name;
+    char* request;
+    char* protocol;
+    char* buffer;
+    char* parsed_content;
+    int client_connect;
+    int key_fd;
+    int content_length;
+    bool flag = false;
+    int *array_of_clients;
+    ssize_t write_bytes;
+    ssize_t recv_bytes;
+    pthread_mutex_t master_key;
+
+}http_node;
+
+struct thread_data{
+    int id;
+    int fd;
+    int available;
+    pthread_t workers;
+    http_object http_node;
+}Work_Thread;
 
 
 

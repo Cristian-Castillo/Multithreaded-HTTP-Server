@@ -9,4 +9,14 @@ curl http://localhost:8080 --request-target FILENAME06 > cmd6.output &
 curl http://localhost:8080 --request-target FILENAME07 > cmd7.output &
 curl http://localhost:8080 --request-target FILENAME08 > cmd8.output &
 curl http://localhost:8080 --request-target FILENAME09 > cmd9.output &
+curl http://localhost:8080 --request-target FILENAME10 > cmd10.output &
+curl http://localhost:8080 --request-target FILENAME11 > cmd11.output &
+curl http://localhost:8080 --request-target FILENAME12 > cmd12.output &
+curl http://localhost:8080 --request-target FILENAME13 > cmd13.output &
+curl http://localhost:8080 --request-target FILENAME14 > cmd14.output &
+curl http://localhost:8080 --request-target FILENAME15 > cmd15.output &
+curl http://localhost:8080 --request-target FILENAME16 > cmd16.output &
+curl http://localhost:8080 --request-target FILENAME17 > cmd17.output &
+curl http://localhost:8080 --request-target FILENAME18 > cmd18.output &
+curl http://localhost:8080 --request-target FILENAME19 > cmd19.output &
 

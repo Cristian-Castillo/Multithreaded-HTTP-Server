@@ -13,7 +13,7 @@
 #include <getopt.h>
 #include <queue>
 #include <vector>
-
+std::queue<int>items;
 
 /* getaddrinfo - Socket set up e.g ports, etc*/
 #include <sys/socket.h>
@@ -43,35 +43,18 @@
 #include <pthread.h>
 
 /* Pthread Global Variables */
-pthread_mutex_t mutex;
-pthread_cond_t client_in_queue;
+pthread_mutex_t mutex_req = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t file_req = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condition_v = PTHREAD_COND_INITIALIZER; // allow threads to wait for some event to ocurr 
 
-/* Global Variables */
-std::queue<int>items;
-std::queue<char*>module_items;
+int mastercounter = 0;
 
 /* Master http_obj only stores content length */
 struct http_node{
     int content_length;
 };
 
-/* Holds redunancy */
-struct marshall{
-    char *master_file;
-    char *master_buffer;
-    char *master_protocol;
-    char *master_request;
-    int master_client_connection;
-    int master_content_length;
-    char *carrier_msg;
-    int is_redundant;
-};
 
-struct command_line_inputs{
-    int N_threads;
-    bool Redundancy;
-    char *oh_so_redundant;
-};
 
 struct http_node spawnNode;
 
@@ -426,83 +409,122 @@ void f_void_permission_put(char *file_name,int clientSocket){
     }
 }
 /* Modularized Put Box */
-void *f_void_put_module(char *buffer,char *file_name,int clientSocket){
+void f_void_put_module(struct http_object *http_node){
 
         /* Check Permissions */
-        f_void_permission_put(file_name,clientSocket);
-
-        struct http_node *child;
-        child = &spawnNode;
-
-        int content_length;
-        char *char_parse_content;
-
-        while((char_parse_content = strtok_r(buffer,"\n", &buffer))){
-            sscanf(char_parse_content,"Content-Length: %d",&content_length);
+        f_void_permission_put(http_node->file_name,http_node->client_connect);
+        http_node->parsed_content = strtok (http_node->buffer,"\n");
+        
+        while(http_node->parsed_content != NULL){
+                sscanf(http_node->parsed_content,"Content-Length: %d",&http_node->content_length);
+                http_node->parsed_content = strtok (NULL, "\n");
         }
-      
-        /* Store content-length into struct for long usage */
-        child->content_length = content_length;
-        
-        /* Reset the buffer so that child procees may reuse */
-        memset(buffer,0,HEADER_BUFFER); 
-        
-        int put_fd_request = open(file_name,O_CREAT | O_WRONLY | O_TRUNC,0664);
-       
-        if(put_fd_request == -1 ){f_void_client_error_not_found(clientSocket);}
 
+        /* Reset the buffer so that child procees may reuse */
+        memset(http_node->buffer,0,HEADER_BUFFER); 
+        //http_node->buffer[THREAD_BUFFER];
+
+        
+        http_node->key_fd = open(http_node->file_name,O_CREAT | O_WRONLY | O_TRUNC,0664);
+        if(http_node->key_fd == -1 ){f_void_client_error_not_found(http_node->client_connect);}
+ 
         /* ---------------------- Content Length = 0 --------------------------------------------*/
 
-        if(child->content_length == 0){ 
-            printf("Check point 1\n");
-            f_client_req_created(clientSocket);close(put_fd_request); return NULL;
+        if(http_node->content_length == 0){ 
+            printf("--------Creating job for client ID wwer: %d\n",http_node->client_connect);
+            f_client_req_created(http_node->client_connect);
+            close(http_node->key_fd); return;
         }
 
         /*----------------------- Content Length = n --------------------------------------------*/
+        printf("--------Creating job for client ID2 : %d\n",http_node->client_connect);
+       // if(http_node->content_length > 0){
             
-        if(child->content_length > 0){
+            // ssize_t write_bytes = 0;
+            // ssize_t check_bytes_recv = 0;
             
-            ssize_t write_bytes = 0;
-            ssize_t check_bytes_recv = 0;
-          
-            char *buff = (char*)malloc(content_length*sizeof(char*));
-            while((check_bytes_recv = read(clientSocket,buff,sizeof(buff))) >= 0){
-                write_bytes += write(put_fd_request,buff,check_bytes_recv);
-                if(write_bytes == child->content_length)break;
+            // pthread_mutex_lock(&http_node->master_key); 
+           // char *buff = (char*)malloc(http_node->content_length*sizeof(char*));
+            http_node->master_key = file_req;
+            pthread_mutex_lock(&http_node->master_key);
+            while((http_node->recv_bytes = read(http_node->client_connect,http_node->buffer,sizeof(THREAD_BUFFER))) >= 0){
+                http_node->write_bytes += write(http_node->key_fd,http_node->buffer,http_node->recv_bytes);
+                if(http_node->write_bytes == http_node->content_length)break;
             }
-            free(buff);
+            pthread_mutex_unlock(&http_node->master_key);
 
-            if(write_bytes == child->content_length){
-		        f_client_req_created(clientSocket);
-	            close(put_fd_request);
-       		     return NULL;
-              
+           // free(buff);
+            // pthread_cond_signal(&condition_v);
+            // pthread_mutex_lock(&http_node->master_key); 
+
+            // for(int k = 0; k < items.size();k++){
+            //     int foo= *((int*)items); // cast to an int
+            //     printf("Items has : %d\n",foo);
+            // }
+
+            while(!items.empty()){
+                int foo = items.front();
+                items.pop();
+                printf("items : %d\n",foo);
+            }
+            printf("--------Creating job for client ID: %d\n",http_node->client_connect);
+            while(!items.empty()){
+                int foo = items.front();
+                items.pop();
+                printf("items : %d\n",foo);
+            }
+            
+            if(http_node->write_bytes == http_node->content_length){
+                
+                pthread_mutex_lock(&http_node->master_key);
+                f_client_req_created(http_node->client_connect);
+                memset(http_node,0,sizeof(http_object));  
+                http_node->content_length = -1;
+                close(http_node->key_fd);
+                pthread_mutex_lock(&http_node->master_key);
+                pthread_cond_broadcast(&condition_v);
+                //http_node->master_key = PTHREAD_MUTEX_INITIALIZER;
+       	
             }
             else{
-                f_void_intr_error(clientSocket);
-                close(put_fd_request);
-                return NULL;
-               
+                f_void_intr_error(http_node->client_connect);
+                close(http_node->key_fd);
+                return;
             }
-        }
+        //}
         /*------------------------- Content Length = ? Read-> EOF ---------------------------------*/
-        else{ 
+        // else{ 
 
-            ssize_t sendByte = 0;
-            ssize_t recv_byte = 0;
-            /* Read until end of file  must be manually closed. */
-            printf("Check point 3\n");
-            while((recv_byte = recv(clientSocket,buffer,sizeof(buffer),0)) != EOF){
-                sendByte = write(put_fd_request,buffer,recv_byte);
-               // memset(buffer,0,sizeof(buffer));
-                if(recv_byte == EOF || sendByte == EOF){
-                    close(put_fd_request);
-                    return NULL;
-                }
-            }
+        //     size_t recv_byte = 0;
+        //     ssize_t sendByte;
+        //     ssize_t msgsize = 0;
+
+        //     //read the clients message
+        //     while((recv_byte = read(http_node->client_connect,http_node->buffer+msgsize,sizeof(http_node->buffer)-msgsize-1)) > 0){
+
+        //         sendByte = write(http_node->key_fd,http_node->buffer,recv_byte);
+        //        // memset(buffer,0,sizeof(buffer));
+        //         if(recv_byte == EOF || sendByte == EOF){
+        //             http_node->buffer[msgsize-1] = 0; // null terminate message and remove the \n
+        //             int temp_key = -1;
+        //             f_client_req_created(http_node->client_connect);
+        //             temp_key = http_node->key_fd;
+        //             pthread_mutex_lock(&mutex_req);
+        //             http_node->key_fd = -1;
+        //             http_node->client_connect = 0;
+        //             http_node->content_length = -1;
+        //             http_node->buffer = NULL;
+        //             http_node->request = NULL;
+        //             http_node->file_name = NULL;
+        //             http_node->protocol = NULL;
+        //             pthread_mutex_unlock(&mutex_req);
+        //             close(temp_key);
+        //             return;
+        //         }
+        //     }
+    
         
-        }
-    return NULL;
+    return;
 }
 
 
@@ -554,85 +576,5 @@ void *f_void_get_module(char *buffer,char *file_name,int clientSocket){
             return NULL;  
         }
     }
-    return NULL;
-}
-
-void *worker_thread(void *args){
-
-    /* Unmarshall struct to get message */
-    struct marshall *message = (struct marshall *)args;
-    char so_redundant;
-    int id = *((int *)args); 
-	int clientSocket;
-
-	printf("Hullo in %d\n", id);
-    if(message->is_redundant == true){ so_redundant = 'r';}
-    
-    while(LIVE){
-           
-        /* -----------------  Locking  Thread In ------------------------------*/
-        clientSocket = -1;
-		printf("Go to loop in %d\n", id);
-		pthread_mutex_lock(&mutex);
-		{
-			while(items.empty()){
-				pthread_cond_wait(&client_in_queue,&mutex);
-			}
-				/* Take 1 client out of the queue */
-				clientSocket = items.front();
-				items.pop();
-		}
-		pthread_mutex_unlock(&mutex);
-		printf("Worker with id = %d handles socketId = %d\n", id, clientSocket);
-
-       // if(clientSocket >= 0){
-       
-        /* -----------------  UnLocking Thread In ---------------------------- */
-
-        char buffer[HEADER_BUFFER];
-
-        /* Read client request into buffer */
-        if(read(clientSocket,buffer,HEADER_BUFFER) < 0){ f_void_path_error(clientSocket); }
-        
-        /* Parse HTTP Header request  for GET/PUT - file of requested */
-        char request[4],file[50],protocol[10];
-        sscanf(buffer,"%s %s %s",request,file, protocol);
-        
-        /* ------------------------REGEX SECTION ---------------------------- */
-
-        bool matcha = f_regex_overkill_parse(request,file,protocol);
-        
-        if(matcha != 1){ f_void_400(clientSocket);continue;}
-
-        /*---------------------------------------------------------------------*/
-
-        /* Get the file name - delimiter dash */
-     
-        char *theFile = file;
-        char *restOfString = theFile;
-        char *file_name = strtok_r(restOfString,"/", &restOfString);
-
-        /* Check length of file must be = 10 ASCII */
-        bool check_file_length = f_bool_check_file_len(file_name);
-      
-        if(check_file_length == false){
-            f_void_400(clientSocket);
-            memset(buffer,0,HEADER_BUFFER);
-            continue;
-        }
-      
-        /* Checking valid resource names A-Z/a-z/0-9 */
-        bool check_file_format = f_bool_check_file(file_name);
-        
-        if(check_file_format == false){
-            f_void_400(clientSocket);
-            memset(buffer,0,HEADER_BUFFER);
-            continue;
-        } 
-
-        if(strcmp(request,"GET") == 0){f_void_get_module(buffer,file_name,clientSocket);continue;}
-        if(strcmp(request,"PUT") == 0){ f_void_put_module(buffer,file_name,clientSocket);continue;}
-        if((strcmp(request,"PUT") != 0 || ((strcmp(request,"GET") != 0)))) f_void_kill_request(clientSocket); //CC : Future self add res in 2nd parameter if you get malloc its from here
-        }
     return NULL;
 }

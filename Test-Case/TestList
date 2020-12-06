@@ -1,0 +1,29 @@
+1. Big File
+2. Binary File
+3. Bigger File (like really big bible size file)
+4. Small File
+5. Big file with with ASCII and non-ASCII characters
+6. Empty File
+7. Null File
+8. Big File 16Kib ( thread and main tester )
+
+
+These files are used interchangeably with the following commands ($i is in a for loop for bash): 
+
+
+curl -T 8 http://localhost:8080 --request-target FILENAME00 > cmd01.output 2> stderr01.output &
+curl  http://localhost:8080 --request-target FILENAME81 > cmd82.output 2> stderr82.output &
+curl localhost:8080 --request-target 123456789"$i" -v > curve_gods"$i" &
+curl -T "$i" localhost:8080 --request-target 123456789"$i"  > cmd"$i".output"$i" &
+curl -T "$i" localhost:8080/123456789"$i"  > cmd"$i".output"$i" &
+curl localhost:8080/123456789"$i" -v > curve_gods"$i" &
+
+
+The numbers 1-8 are files that are associated to these commands. To enable these commands please type the following:
+
+chmod +x file_foo.sh
+
+This will enable the commands.
+
+Lastly, there is a ./removal.sh that removes all the generated files from these commands. The ./daniel.sh's, named evidently after our TA, is 80+ request in one shot.
+

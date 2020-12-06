@@ -1,9 +1,8 @@
 /*
-    Cristian C. Castillo & Baubak Saadat
-    Professor Nawab
-    UCSC CSE 130
-    HTTPSERVER Assignment # 1
+    Cristian C. Castillo 
+
 */
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /* C-C++ lib */ 
 #include <stdio.h>
@@ -44,17 +43,20 @@
 /* POSIX LIB*/
 #include <pthread.h>
 
-/* Pthread Global Variables */
+/* Pthread Global Variables & locks*/
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-/* Pthread local locks */
 pthread_mutex_t lock_put = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_get = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t client_in_queue = PTHREAD_COND_INITIALIZER;
 
-/* Global Variables */
+
 std::queue<int>items;
+std::vector<int>connections;
+
 int Redundency = 0;
 int client_connection_count;
+int new_thread_count;
+
 /* Master http_obj only stores content length */
 struct http_node{
     int content_length;
@@ -64,16 +66,68 @@ struct http_node{
 struct marshall{
     char *carrier_msg;
     int is_redundant;
+
 };
 
 struct command_line_inputs{
     int N_threads;
     int  Redundancy;
     char *oh_so_redundant;
+    int client_recall_connection;
 };
 
 struct http_node spawnNode;
 
+/////////////////////////////////////////////////////////////// GET OPT CMD LINE PARSER ///////////////////////////////////////////////////////////
+
+/* Parse Flags */
+void f_getopt(int argc, char *argv[], struct command_line_inputs *configs){
+
+    int option;
+    /* Make sure the -N flag followed by a number is utitlized correctly and only once */
+    int Nflag = 0; 
+    /* Make sure the -r flag is utlizied correctly and only once */
+    int Rflag = 0; 
+
+    configs->N_threads = 4;
+    configs->Redundancy = 0;
+    while((option = getopt(argc, argv, "rN:")) != -1){
+
+        switch(option){
+            case 'N':
+                if(Nflag == 1){
+                    fprintf(stderr, "Error: same flag used twice.\n");
+                    exit(EXIT_FAILURE);
+                }
+                else{
+                    if(atoi(optarg) == 0){
+                        fprintf(stderr, "Usage: (-N <integer>).\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    configs->N_threads = atoi(optarg);
+                    Nflag += 1;
+                }
+                continue;
+            case 'r':
+                if(Rflag == 1){
+                    fprintf(stderr, "Error: same flag used twice.\n");
+                    exit(EXIT_FAILURE);
+                }
+                else{
+                    configs->Redundancy = 1;
+                    Rflag += 1;
+                }
+                
+                continue;
+            default: /* '?' */
+                fprintf(stderr, "Options:(-r) or (-N <integer>). \n");
+                exit(EXIT_FAILURE);
+        }
+    }
+    return;
+}
+
+/////////////////////////////////////////////////////////////// Vitality Modules ///////////////////////////////////////////////////////////
 
 /* Checking Health Status */
 bool f_bool_check_vitality(char *file_name,char *protocol,char *request,int client_connect){
@@ -84,9 +138,9 @@ bool f_bool_check_vitality(char *file_name,char *protocol,char *request,int clie
         bool check_file_length = f_bool_check_file_len(file_name);
         /* Checking valid resource names A-Z/a-z/0-9 */
         bool check_file_format = f_bool_check_file(file_name);
-
+        /* Check file permissions */
         bool check_request = f_bool_check_request(request);
-
+        /* Check HTTP/1.1 version */
         bool check_protocol = check_http_protocol(protocol);
 
         if(check_file_access == false){
@@ -110,19 +164,17 @@ bool f_bool_check_vitality(char *file_name,char *protocol,char *request,int clie
             return false;
         }
         else {return true;}
-         
 }
 
+/* HTTP 1.1 Check protocol */
 bool check_http_protocol(char *protocol){
     if((strcmp(protocol,"HTTP/1.1")) != 0){
         return false;
-    }
-    else {return true;}
+    }else {return true;}
 }
 
-/* Request must be Get/Put */
+/* Request must be Get | Put */
 bool f_bool_check_request(char *file_name){
-
     if((strcmp(file_name,"GET")) != 0 &&  (strcmp(file_name,"PUT")) != 0){return false;}
     else{ return true;}
 }
@@ -139,51 +191,16 @@ bool f_bool_check_file(char *parseFile){
     return true;
 }
 
-/* Parse Flags */
-void f_getopt(int argc, char *argv[], struct command_line_inputs *configs){
+/* check permissions of file */
+bool f_bool_permissions(char *file_name){
 
-    int option;
-    /* Make sure the -N flag followed by a number is utitlized correctly and only once */
-    int Nflag = 0; 
-    /* Make sure the -r flag is utlizied correctly and only once */
-    int Rflag = 0; 
+    struct stat is_file_allowed;
+    stat(file_name,&is_file_allowed);
 
-    configs->N_threads = 4;
-    configs->Redundancy = 0;
-    while((option = getopt(argc, argv, "rN:")) != -1){
-
-        switch(option){
-            case 'N':
-                if(Nflag == 1){
-                    fprintf(stderr, "Error: same flag used twice\n");
-                    exit(EXIT_FAILURE);
-                }
-                else{
-                    if(atoi(optarg) == 0){
-                        fprintf(stderr, "Usage: (-N <integer>)\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    configs->N_threads = atoi(optarg);
-                    Nflag += 1;
-                }
-                continue;
-            case 'r':
-                if(Rflag == 1){
-                    fprintf(stderr, "Error: same flag used twice\n");
-                    exit(EXIT_FAILURE);
-                }
-                else{
-                    configs->Redundancy = 1;
-                    Rflag += 1;
-                }
-                
-                continue;
-            default: /* '?' */
-                fprintf(stderr, "Options:(-r) or (-N <integer>) \n");
-                exit(EXIT_FAILURE);
-        }
-    }
+    if(errno != ENOENT && (is_file_allowed.st_mode & S_IWUSR) != S_IWUSR ){ return false;}
+    else{ return true;}
 }
+
 
 /* Checking file length */
 bool f_bool_check_file_len(char *file){
@@ -195,6 +212,10 @@ bool f_bool_check_file_len(char *file){
         return true;
     }
 }
+
+//////////////////////////////////////////////////////// MODULE ERRORS //////////////////////////////////////////////////////////////////
+
+
 /* Server argument errors */
 void f_void_server_arg_error(){
     perror("Server format failure. \nTry the following:  ./httpserver <ip><port> or sudo ./httpserver <ip> or ./httpserver <ip><port> -N # or ./httpserver\n");  
@@ -309,6 +330,7 @@ void f_void_bind_error(int bind){
         exit(EXIT_FAILURE);
     }
 }
+
 /* Listen error */
 void f_void_listen_error(int socket_listen){
 
@@ -342,46 +364,6 @@ void f_void_listen_error(int socket_listen){
     }
 }
 
-/* file exist, terminate child process and respond to client 200 */
-void f_client_req_found(int fetch_file_fd,int clientSocket){
-    
-    struct stat buf;
-    fstat(fetch_file_fd,&buf);
-
-    int int_ch_content = buf.st_size;
-    char server_length[10];
-
-    char msg200[] = "HTTP/1.1 200 OK\r\n";
-    char msgContent[] = "Content-Length: ";
-    char term[] = "\r\n\r\n";
-
-    sprintf(server_length,"%d",int_ch_content);
-
-    write(clientSocket,msg200,strlen(msg200));
-    write(clientSocket,msgContent,strlen(msgContent));
-    write(clientSocket,server_length,strlen(server_length));
-    write(clientSocket,term,strlen(term));
-    return;
-}
-
-/* 201 file was created successful ! */
-void f_client_req_created(int int_client_sockd){
-    dprintf(int_client_sockd,"HTTP/1.1 201 Created\r\nContent-Length: %d\r\n\r\n",0);
-    return;
-}
-/* Overkill parse on request get/put */
-bool f_regex_overkill_parse(char * request, char *file,char *protocol){
-
-    char buffer_for_regex[80]; 
-
-        strcpy (buffer_for_regex,request);
-        strcat (buffer_for_regex,file);
-        strcat (buffer_for_regex,protocol);
-
-        std::regex ea("(GET|PUT)[/]?[a-zA-Z0-9]{10}HTTP/1.1"); 
-        bool matcha = regex_match(buffer_for_regex, ea);
-        return matcha;
-}
 
 /* Client error bad request 400 */
 void f_void_400(int client_sockd){
@@ -458,42 +440,72 @@ void f_void_getaddrinfo_error(int status,struct addrinfo *res){
 }
 
 void f_void_error_on_accept(){
-     char msgAccept[] = "Failed on accept()\n";
+     char msgAccept[] = "Warning on accept(). Found bundle for host. Re-using existing connection.\n";
      write(1,msgAccept,strlen(msgAccept));
      return;
 }
+
+/////////////////////////////////////////////////// 200 && 201 Modules //////////////////////////////////////////////////
+
+/* file exist, terminate child process and respond to client 200 */
+void f_client_req_found(int fetch_file_fd,int clientSocket){
+    
+    struct stat buf;
+    fstat(fetch_file_fd,&buf);
+
+    int int_ch_content = buf.st_size;
+    char server_length[10];
+
+    char msg200[] = "HTTP/1.1 200 OK\r\n";
+    char msgContent[] = "Content-Length: ";
+    char term[] = "\r\n\r\n";
+
+    sprintf(server_length,"%d",int_ch_content);
+
+    write(clientSocket,msg200,strlen(msg200));
+    write(clientSocket,msgContent,strlen(msgContent));
+    write(clientSocket,server_length,strlen(server_length));
+    write(clientSocket,term,strlen(term));
+    return;
+}
+
+/* 201 file was created successful ! */
+void f_client_req_created(int int_client_sockd){
+    dprintf(int_client_sockd,"HTTP/1.1 201 Created\r\nContent-Length: %d\r\n\r\n",0);
+    return;
+}
+
+//////////////////////////////////////////////////////// UTILITIES /////////////////////////////////////////////////////////////
+
+/* Overkill parse on request Get | Put */
+bool f_regex_overkill_parse(char *request, char *file,char *protocol){
+
+    char buffer_for_regex[80]; 
+
+        strcpy (buffer_for_regex,request);
+        strcat (buffer_for_regex,file);
+        strcat (buffer_for_regex,protocol);
+
+        std::regex ea("(GET|PUT)[/]?[a-zA-Z0-9]{10}HTTP/1.1"); 
+        bool matcha = regex_match(buffer_for_regex, ea);
+        return matcha;
+}
+
 
 /* open req file as rd only */
 int f_fetch_file(char *char_file){
     return open(char_file,O_RDONLY);
 }
 
-bool f_bool_permissions(char *file_name){
-
-    struct stat is_file_allowed;
-    stat(file_name,&is_file_allowed);
-
-    if(errno != ENOENT && (is_file_allowed.st_mode & S_IWUSR) != S_IWUSR ){
-        return false;
-    }
-    else{
-        return true;
-    }
-}
+//////////////////////////////////////////////////////// REDUNDANCY MODULES ///////////////////////////////////////////////////////
 
 
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-/* REDUNDENCY for PUT request */
+/* Redundancy for PUT request */
 void f_make_copy(char *file_name, int content_length, int clientSocket){
 
-    /*copy status 0 == file failed to open, status 1 == file opened succesfully */
+    /* copy status 0 == file failed to open, status 1 == file opened succesfully */
     int copy1_status, copy2_status, copy3_status;
     copy1_status = copy2_status = copy3_status = 1;  
-
 
     ssize_t write_bytes = 0;
     ssize_t check_bytes_recv;
@@ -501,7 +513,8 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
 
     char *buff = (char*)malloc(get_length*sizeof(char*));
 
-//----------------------------------------(FILE COPY 1/3) open phase-------------------------------------------------//    
+/* ----------------------------------------(FILE COPY 1/3) open phase------------------------------------------------- */  
+    
     /* checking if copy1 directory exists, if not, we create it */
     struct stat st;
     char dirName[] = "copy";
@@ -511,7 +524,6 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
     if(stat("copy1", &st) == -1){
         mkdir("copy1", 0700);
     }
-   
 
     /* opening the file in diretory copy1*/
     char path_with_name1[20]; 
@@ -519,7 +531,7 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
     strcat (path_with_name1, file_name);
     int file_copy1 = open(path_with_name1, O_CREAT | O_RDWR, 0664);
     
-//-------------------------(FILE COPY 1/3 ) checking length of file to see if == orginal size -----------------------//
+/* -------------------------(FILE COPY 1/3 ) checking length of file to see if == orginal size -----------------------*/
 
     /* if failed to open, means permission issue, so copy_status goes from 1 to 0 */
     if(file_copy1 == -1){      
@@ -537,9 +549,8 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
         }
         memset(buff, 0, get_length);
     }
-//-----------------------(FILE COPY 1/3 ) DONE ------------------------------------------------------//
-//------------------------(COPY FILE 2/3 start) ----------------------------------------------------//
-
+/*------------------------------------------ (FILE COPY 1/3 ) DONE ----------------------------------------------------*/
+/*-------------------------------------------(COPY FILE 2/3 start) ----------------------------------------------------*/
 
     char dirCopy2[5];
     strcpy(dirCopy2 ,dirName);
@@ -556,7 +567,7 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
 
     int file_copy2 = open(path_with_name2, O_CREAT | O_RDWR, 0664);
 
-///////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     write_bytes = 0;
 
@@ -575,7 +586,7 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
         memset(buff, 0, get_length);
     }
 
-//////////////////////////////////(COPY FILE 3/3 start)///////////////
+////////////////////////////////////////////////////////////// (COPY FILE 3/3 START) ///////////////////////////////////////////////////////
 
 
     char dirCopy3[5];
@@ -592,7 +603,8 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
     strcat (path_with_name3, file_name);
 
     int file_copy3 = open(path_with_name3, O_CREAT | O_RDWR, 0664);
-/////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     write_bytes = 0;
 
@@ -601,37 +613,374 @@ void f_make_copy(char *file_name, int content_length, int clientSocket){
         close(file_copy3);
     }
     else{
+
         /* copy file from ./copy1 directory into ./copy3 directory */
         lseek(file_copy1, 0*sizeof(char), SEEK_SET);
+
         while((check_bytes_recv = read(file_copy1,buff,get_length)) >= 0){
             write_bytes += write(file_copy3,buff,check_bytes_recv);
             if(write_bytes == get_length)break;
         }
         close(file_copy3);
-        //memset(buff, 0, get_length);
         free(buff);
     }
     close(file_copy1);
-    
-    int creation_results = copy1_status + copy2_status + copy3_status; // 3 == 201 OK ,  2 == 201 OK , 1 == 500 error, 0 == 500 error
-    if(creation_results >= 2){  //if 2 more 3 files were sucesffully written
-        // printf("Error code 201\n");
+
+    /* 3 == 201 OK ,  2 == 201 OK , 1 == 500 error, 0 == 500 error */
+    int creation_results = copy1_status + copy2_status + copy3_status; 
+    if(creation_results >= 2){  /* if 2 more 3 files were sucesffully written */
         f_client_req_created(clientSocket);
     }
-    else if(creation_results == 0 || creation_results == 1){    // if 0 or 1 files were sucesfully written
+    else if(creation_results == 0 || creation_results == 1){    /* if 0 or 1 files were sucesfully written */
         f_void_intr_error(clientSocket);
-        // printf("Error code 500\n");
+    }
+}
 
+///////////////////////////////////////////////////// REDUNDANCY GET MODULE ////////////////////////////////////////////////////////////
+
+void *f_check_copy(char *file_name, int clientSocket)
+{
+    /* 
+       if a copy is not found in a directory then copyX_found = 0. 
+       If file is found in the directory then copyX_found = 1  for X in (1,2,3)
+    */
+    int copy1_found, copy2_found, copy3_found;
+    copy1_found = 0;
+    copy2_found = 0;
+    copy3_found = 0;
+
+    /* Checking if the file requested by user exists in ./copy1 directory */
+    DIR *dir;
+    struct dirent *listD;
+    dir = opendir("./copy1");
+    
+    if(dir == NULL){
+        perror("Error: Unable to open current server directory copy1.\n)");
+        copy1_found = 0;
+    }
+    else{
+        while((listD = readdir(dir)) != NULL){
+            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
+                copy1_found = 1;
+            }
+        }
+    }
+    dir = opendir("./copy2");
+    
+    if(dir == NULL){
+        perror("Error: Unable to open current server directory copy2.\n)");
+        copy2_found = 0;
+    }
+    else{
+        while((listD = readdir(dir)) != NULL){
+
+            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
+                copy2_found = 1;
+            }
+        }
+    }
+    dir = opendir("./copy3");
+    
+    if(dir == NULL){
+        perror("Error: Unable to open current server directory copy3.\n)");
+        copy3_found = 0;
+    }
+    else{
+        while((listD = readdir(dir)) != NULL){
+            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
+                copy3_found = 1;
+            }
+        }
+    }
+    closedir(dir);
+
+
+    /* 
+       If a file's permission is locking us out, then copyX_no_permission = 1. 
+       But if we have the permission, copyX_no_permission = 0 
+    */
+    int copy1_no_permission, copy2_no_permission, copy3_no_permission;
+    copy1_no_permission = 0;
+    copy2_no_permission = 0;
+    copy3_no_permission = 0;
+
+    struct http_node *child;
+    child = &spawnNode;
+
+    /* Opening a file in directory ./copy1 */
+    char path_with_name1[20]; 
+    strcpy (path_with_name1,"copy1/");
+    strcat (path_with_name1, file_name);
+
+    int file_copy1 = open(path_with_name1, O_RDONLY,0664);
+    if(copy1_found == 1){ /* Indicatese if file was found in directory */
+    
+    /* if this condition is met that means file in directory but no permission to open  //f_void_client_error_not_found(clientSocket);} */
+        if(file_copy1 == -1) {copy1_no_permission = 1;}  
+    }
+    /* copy1_permission = f_int_permission_put(path_with_name1, clientSocket); */
+
+    /* Opening a file in directory ./copy2 */
+    char path_with_name2[20]; 
+
+    strcpy (path_with_name2,"copy2/");
+
+    strcat (path_with_name2, file_name);
+
+    int file_copy2 = open(path_with_name2, O_RDONLY,0664);
+    if(copy2_found == 1){
+        if(file_copy2 == -1) {copy2_no_permission = 1;} /* {f_void_client_error_not_found(clientSocket);} */
+    }
+    /* copy2_permission = f_int_permission_put(path_with_name2, clientSocket); */
+
+    /* Opening a file in directory ./copy3 */
+    char path_with_name3[20]; 
+
+    strcpy (path_with_name3,"copy3/");
+
+    strcat (path_with_name3, file_name);
+
+    int file_copy3 = open(path_with_name3, O_RDONLY,0664);
+    if(copy3_found == 1){
+        if(file_copy3 == -1){
+            copy3_no_permission = 1; /* {f_void_client_error_not_found(clientSocket);} */
+        } 
+    }
+    /* copy3_permission = f_int_permission_put(path_with_name3, clientSocket); */
+
+
+    /* getting the content length of each file within each ./copyX directory for X in (1,2,3) */
+    struct stat buf1;
+    fstat(file_copy1,&buf1);
+    int get_length1 = buf1.st_size;
+    ////////////////////////////////////////////////////////////////////////////////////
+    struct stat buf2;
+    fstat(file_copy2,&buf2);
+    int get_length2 = buf2.st_size;
+    ////////////////////////////////////////////////////////////////////////////////////
+    struct stat buf3;
+    fstat(file_copy3,&buf3);
+    int get_length3 = buf3.st_size;
+    ////////////////////////////////////////////////////////////////////////////////////
+
+
+    char *buff1 = (char*)malloc(get_length1*sizeof(char*));
+    char *buff2 = (char*)malloc(get_length2*sizeof(char*));
+    char *buff3 = (char*)malloc(get_length3*sizeof(char*));
+
+    /* 
+        If two files are found to be the same in regards to content length 
+        and ascii character comparison, then copyXY = 1 
+    */
+    int copy12_same, copy13_same, copy23_same;
+    copy12_same = copy13_same = copy23_same = 0;
+
+    ssize_t check_bytes_recv1;
+    ssize_t check_bytes_recv2;
+    ssize_t check_bytes_recv3;
+
+    /* Checking to see if the the file in ./copy1 is the same in ./copy2 in terms of ascii content and length */
+    ssize_t write_bytes = 0;
+
+    if((get_length1 == get_length2) && (file_copy1 != -1) && (file_copy2 !=-1)){
+        lseek(file_copy1, 0*sizeof(char), SEEK_SET);
+        lseek(file_copy2, 0*sizeof(char), SEEK_SET);
+        while(((check_bytes_recv1 = read(file_copy1,buff1,get_length1)) >= 0) && ((check_bytes_recv2 = read(file_copy2,buff2,get_length2)) >= 0) ){
+            write_bytes += check_bytes_recv1;
+  
+            sleep(2);
+            /* comparing ascii values */
+            if(strcmp(buff1,buff2) != 0){
+                break;
+            }
+            if(write_bytes == get_length1){
+
+                copy12_same = 1;
+                break;
+            }
+        }
     }
 
+     /* 
+        Checking to see if the the file in ./copy1 is the same in
+        ./copy3 in terms of ascii content and length 
+    */
+    memset(buff1, 0, get_length1);
+    memset(buff2, 0, get_length2);
+    
+    if(copy12_same == 0 && (get_length1 == get_length3)  && (file_copy1 != -1) && (file_copy3 !=-1)){
+        
+            lseek(file_copy1, 0*sizeof(char), SEEK_SET);
+            lseek(file_copy3, 0*sizeof(char), SEEK_SET);
+            write_bytes = 0;
+            
+            while((check_bytes_recv1 = read(file_copy1,buff1,get_length1)) >= 0 && (check_bytes_recv3 = read(file_copy3,buff3,get_length3)) >= 0){
+            write_bytes += check_bytes_recv1;
+            
+            if(strcmp(buff1,buff3) != 1){
+                break;
+            }
+            if(write_bytes == get_length1){
+    
+                copy13_same = 1;
+                break;
+            }
+        }
+    }
+
+    /* Checking to see if the the file in ./copy2 is the same in ./copy3 in terms of ascii content and length */
+    memset(buff1, 0, get_length1);
+    memset(buff3, 0, get_length3);
+    
+    if((copy12_same == 0) && (copy13_same == 0) && (get_length2 == get_length3)  && (file_copy2 != -1) && (file_copy3 !=-1)){
+        
+        lseek(file_copy2, 0*sizeof(char), SEEK_SET);
+        lseek(file_copy3, 0*sizeof(char), SEEK_SET);
+        write_bytes = 0;
+        
+
+        while((check_bytes_recv2 = read(file_copy2,buff2,get_length2)) >= 0 && (check_bytes_recv3 = read(file_copy3,buff3,get_length3)) >= 0){
+            write_bytes += check_bytes_recv2;
+
+            sleep(2);
+            if(strcmp(buff2,buff3) != 0){
+                break;
+            }
+            if(write_bytes == get_length2){
+  
+                copy23_same = 1;
+                break;
+            }
+        }
+    }
+    memset(buff1, 0, get_length1);
+    memset(buff3, 0, get_length3);
+
+    lseek(file_copy1, 0*sizeof(char), SEEK_SET);
+    lseek(file_copy2, 0*sizeof(char), SEEK_SET);
+    
+    free(buff1);
+    free(buff2);
+    free(buff3);
+
+    close(file_copy3);
+
+    /* 
+       NOTE: the number of files that gives us no permission 
+       to open is always less than or equal to the number of files that exist 
+    */ 
+
+    /* calculates the number of files that gives no permission for us to open in directorys ./copyX */
+    int num_of_no_permission_files = copy1_no_permission + copy2_no_permission + copy3_no_permission;
+
+    /* calculates the number of files that exists in the directory ./copyX */
+    int num_of_files_that_exist = copy1_found + copy2_found + copy3_found;
+
+    /* If all three files are not found or no permission, the status code should be 500 */
+    if((num_of_files_that_exist == 0) || (num_of_no_permission_files == 3)){
+       /* printf("500 internal error\n"); */
+        close(file_copy1);
+        close(file_copy2);
+        f_void_intr_error(clientSocket);
+    }
+
+    /*  GET file with 2/3 or 3/3 files giving no permissions  */
+    if(num_of_no_permission_files >=2 ){                
+        /* printf("403 error per post @385 endosred by Daniel Alvs #2 & 3 ALSO @336 #1\n");*/
+        close(file_copy1);
+        close(file_copy2);
+        f_void_client_error_forbid(clientSocket);
+    }
+
+    /*  GET file with 1/3 files giving no permissions, 1/3 files that don't exist, 1/3 files that do exist and we have permission */
+    if((num_of_files_that_exist == 2) && (num_of_no_permission_files == 1)){                
+        /* printf("500 error per post @385 endosred by Daniel Alvs #4 ALSO @336 #2\n"); */
+        close(file_copy1);
+        close(file_copy2);
+        f_void_intr_error(clientSocket);
+    }
+
+    /*  GET with 2/3 files that don't exist, and file with 1/3 files giving no permissions   */
+    if((num_of_files_that_exist == 1) && (num_of_no_permission_files == 1)){                
+        /* printf("404 error per post @385 endosred by Daniel Alvs #5 ALSO @336 #3\n"); */
+        close(file_copy1);
+        close(file_copy2);
+        f_void_client_error_not_found(clientSocket);
+    }
+
+    if(copy12_same == 1 || copy13_same == 1){
+
+        /* sending HTTP 200 */
+        f_client_req_found(file_copy1,clientSocket); 
+        ssize_t send_bytes = 0;
+
+        char *buffs = (char*)malloc(get_length1*sizeof(char*));
+
+        /* Store file contents */
+        while((child->content_length = read(file_copy1,buffs,sizeof(buffs))) != 0){
+
+            /* printf("if you see then that means i am writing into the client socket\n"); */
+            send_bytes +=  write(clientSocket,buffs,child->content_length);
+            if(send_bytes == get_length1){break;}
+        }
+        close(file_copy1);
+        close(file_copy2);
+            
+        if(child->content_length == 0){
+            free(buffs);
+            return NULL;
+        }
+        else{ 
+            /* Internal error of 500 Content failuire*/
+            f_void_intr_error(clientSocket);
+            free(buffs);
+            return NULL;   
+        }
+
+    }
+    else if(copy23_same == 1){
+
+        f_client_req_found(file_copy2,clientSocket);
+        ssize_t send_bytes;
+
+        char *buffs = (char*)malloc(get_length2*sizeof(char*));
+        
+        /* Store file contents */
+        while((child->content_length = read(file_copy2,buffs,sizeof(buffs))) != 0){
+            send_bytes =  write(clientSocket,buffs,child->content_length);
+            if(send_bytes == get_length2){break;}
+        }
+        close(file_copy1);
+        close(file_copy2);
+            
+        if(child->content_length == 0){
+            free(buffs);
+            return NULL;
+        }
+        else{ 
+            /* Internal error of 500 Content failuire */
+            f_void_intr_error(clientSocket);
+            free(buffs);
+            return NULL;
+                
+        }
+    }
+    else{
+        close(file_copy1);
+        close(file_copy2);
+        f_void_intr_error(clientSocket);
+        return NULL;
+    }
 }
-/* Modularized Put Box */
+
+/////////////////////////////////////////////////////////////// PUT MODULE //////////////////////////////////////////////////////////////////
+
 void *f_void_put_module(char *buffer,char *file_name,int clientSocket){
 
-            struct http_node *child, foo;
-            struct http_object *http_ptr,foo2;
-            http_ptr = &foo2;
-            child = &foo;
+            struct http_node *child, content_len_mem;
+            struct http_object *http_ptr,http_mem_location;
+            http_ptr = &http_mem_location;
+            child = &content_len_mem;
             http_ptr->file_name = file_name;
             http_ptr->client_connect = clientSocket;
             http_ptr->buffer = buffer;
@@ -655,7 +1004,7 @@ void *f_void_put_module(char *buffer,char *file_name,int clientSocket){
             http_ptr->content_length = content_length;
 
             /* Reset the buffer so that child procees may reuse */
-            memset(http_ptr->buffer,'\0',HEADER_BUFFER); // 4096
+            memset(http_ptr->buffer,'\0',HEADER_BUFFER); 
             
             http_ptr->key_fd = open(http_ptr->file_name,O_CREAT | O_WRONLY | O_TRUNC,0664);
 
@@ -671,7 +1020,15 @@ void *f_void_put_module(char *buffer,char *file_name,int clientSocket){
 
             /* ---------------------------- Content Length = 0 ------------------------------------------- */
 
-            if(http_ptr->content_length == 0){ f_client_req_created(http_ptr->client_connect);close(http_ptr->key_fd); return NULL;}
+            if(http_ptr->content_length == 0){ 
+
+                pthread_mutex_lock(&http_ptr->master_key);
+                {
+                    f_client_req_created(http_ptr->client_connect);
+                    close(http_ptr->key_fd); return NULL;
+                }
+                pthread_mutex_unlock(&http_ptr->master_key);
+            }
  
             if(http_ptr->content_length > 0){
          
@@ -712,397 +1069,62 @@ void *f_void_put_module(char *buffer,char *file_name,int clientSocket){
                     return NULL;
                 }
             }
-              /*------------------------- Content Length = ? Read-> EOF ---------------------------------*/
+            /*------------------------- Content Length = ? -> Assume 16 Kib allottted Buffer ---------------------------------*/
             else{ 
-                
-                http_ptr->send_bytes = 0;
-                /* Read until end of file  must be manually closed. */
-                while((http_ptr->recv_bytes= recv(http_ptr->client_connect,buffer,sizeof(buffer),0)) != EOF){
-                    http_ptr->send_bytes = write(http_ptr->key_fd,buffer,http_ptr->recv_bytes);
 
-                    if(http_ptr->recv_bytes == EOF || http_ptr->send_bytes == EOF){
-                       f_client_req_created(http_ptr->client_connect);
-                       close(http_ptr->key_fd);
-                       return NULL;
+                char *buff = (char*)malloc(THREAD_BUFFER*sizeof(char*));
+                
+                 pthread_mutex_lock(&http_ptr->master_key);
+                {
+                        http_ptr->write_bytes = 0;
+
+                        while((http_ptr->recv_bytes = read(http_ptr->client_connect,buff,THREAD_BUFFER)) >= 0){
+                            http_ptr->write_bytes += write(http_ptr->key_fd,buff,http_ptr->recv_bytes);
+                            if(http_ptr->write_bytes == http_ptr->recv_bytes)break;
+                        }
+                }
+                pthread_mutex_unlock(&http_ptr->master_key);
+
+                if(http_ptr->write_bytes == http_ptr->recv_bytes){
+                    
+                    pthread_mutex_lock(&http_ptr->master_key);
+                    {
+                        f_client_req_created(http_ptr->client_connect);
+                        free(buff);
+                        close(http_ptr->key_fd);
                     }
+                    pthread_mutex_unlock(&http_ptr->master_key);
+                    return NULL;
+                }
+                else{
+
+                    pthread_mutex_lock(&http_ptr->master_key);
+                    {
+                        f_void_intr_error(clientSocket);
+                        free(buff);
+                        close(http_ptr->key_fd);
+                    }
+                    pthread_mutex_unlock(&http_ptr->master_key);
+                    return NULL;
                 }
             }
             return NULL;
 }
 
-
-
-
-
-
-
-/* REDUNDENCY for GET request */
-void *f_check_copy(char *file_name, int clientSocket)
-{
-    /* if a copy is not found in a directory then copyX_found = 0. if file is found in the directory then copyX_found = 1  for X in (1,2,3)*/
-    int copy1_found, copy2_found, copy3_found;
-    copy1_found = 0;
-    copy2_found = 0;
-    copy3_found = 0;
-
-
-    /* Checking if the file requested by user exists in ./copy1 directory */
-    DIR *dir;
-    struct dirent *listD;
-    dir = opendir("./copy1");
-    
-    if(dir == NULL){
-        printf("Error: Unable to open current server directory copy1.\n)");
-        copy1_found = 0;
-    }
-    else{
-        while((listD = readdir(dir)) != NULL){
-            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
-                printf("file found: %s\n", listD->d_name);
-                copy1_found = 1;
-            }
-        }
-    }
-
-
-
-    dir = opendir("./copy2");
-    
-    if(dir == NULL){
-        printf("Error: Unable to open current server directory copy2.\n)");
-        copy2_found = 0;
-    }
-    else{
-        while((listD = readdir(dir)) != NULL){
-
-            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
-                printf("file found: %s\n", listD->d_name);
-                copy2_found = 1;
-            }
-        }
-    }
-
-
-    dir = opendir("./copy3");
-    
-    if(dir == NULL){
-        printf("Error: Unable to open current server directory copy3.\n)");
-        copy3_found = 0;
-    }
-    else{
-        while((listD = readdir(dir)) != NULL){
-            if((strcmp(file_name, listD->d_name) == 0) && (listD->d_type == DT_REG)){
-                printf("file found: %s\n", listD->d_name);
-                copy3_found = 1;
-            }
-        }
-    }
-
-
-    closedir(dir);
-
-
-    /* if a file's permission is locking us out, then copyX_no_permission = 1. But if we have the permission, copyX_no_permission = 0 */
-    int copy1_no_permission, copy2_no_permission, copy3_no_permission;
-    copy1_no_permission = 0;
-    copy2_no_permission = 0;
-    copy3_no_permission = 0;
-
-
-    struct http_node *child;
-    child = &spawnNode;
-
-    /* Opening a file in directory ./copy1 */
-    char path_with_name1[20]; 
-    strcpy (path_with_name1,"copy1/");
-    strcat (path_with_name1, file_name);
-
-    int file_copy1 = open(path_with_name1, O_RDONLY,0664);
-    if(copy1_found == 1){ // means if file was found in directory
-        if(file_copy1 == -1) {copy1_no_permission = 1;}  //if this condition is met that means file in directory but no permission to open    //f_void_client_error_not_found(clientSocket);}
-    }
-   // copy1_permission = f_int_permission_put(path_with_name1, clientSocket);
-
-
-
-
-    /* Opening a file in directory ./copy2 */
-    char path_with_name2[20]; 
-
-    strcpy (path_with_name2,"copy2/");
-
-    strcat (path_with_name2, file_name);
-
-    int file_copy2 = open(path_with_name2, O_RDONLY,0664);
-    if(copy2_found == 1){
-        if(file_copy2 == -1) {copy2_no_permission = 1;} //{f_void_client_error_not_found(clientSocket);}
-    }
-   // copy2_permission = f_int_permission_put(path_with_name2, clientSocket);
-
-
-
-
-    /* Opening a file in directory ./copy3 */
-    char path_with_name3[20]; 
-
-    strcpy (path_with_name3,"copy3/");
-
-    strcat (path_with_name3, file_name);
-
-    int file_copy3 = open(path_with_name3, O_RDONLY,0664);
-    if(copy3_found == 1){
-        if(file_copy3 == -1) {copy3_no_permission = 1;} //{f_void_client_error_not_found(clientSocket);}
-    }
-   // copy3_permission = f_int_permission_put(path_with_name3, clientSocket);
-
-
-    /* getting the content length of each file within each ./copyX directory for X in (1,2,3) */
-    struct stat buf1;
-    fstat(file_copy1,&buf1);
-    int get_length1 = buf1.st_size;
-    ///////////////////////////////////////////////
-    struct stat buf2;
-    fstat(file_copy2,&buf2);
-    int get_length2 = buf2.st_size;
-    ////////////////////////////////////////////////
-    struct stat buf3;
-    fstat(file_copy3,&buf3);
-    int get_length3 = buf3.st_size;
-    ////////////////////////////////////////////////////
-
-
-    char *buff1 = (char*)malloc(get_length1*sizeof(char*));
-    char *buff2 = (char*)malloc(get_length2*sizeof(char*));
-    char *buff3 = (char*)malloc(get_length3*sizeof(char*));
-
-    /* if two files are found to be the same in regards to content length and ascii character comparison, then copyXY = 1 */
-    int copy12_same, copy13_same, copy23_same;
-    copy12_same = copy13_same = copy23_same = 0;
-
-    ssize_t check_bytes_recv1;
-    ssize_t check_bytes_recv2;
-    ssize_t check_bytes_recv3;
-
-
-    /* Checking to see if the the file in ./copy1 is the same in ./copy2 in terms of ascii content and length */
-    ssize_t write_bytes = 0;
-
-    if((get_length1 == get_length2) && (file_copy1 != -1) && (file_copy2 !=-1)){
-        lseek(file_copy1, 0*sizeof(char), SEEK_SET);
-        lseek(file_copy2, 0*sizeof(char), SEEK_SET);
-        while(((check_bytes_recv1 = read(file_copy1,buff1,get_length1)) >= 0) && ((check_bytes_recv2 = read(file_copy2,buff2,get_length2)) >= 0) ){
-            write_bytes += check_bytes_recv1;
-  
-            sleep(2);
-            /* comparing ascii values */
-            if(strcmp(buff1,buff2) != 0){
-                break;
-            }
-            if(write_bytes == get_length1){
-
-                copy12_same = 1;
-                break;
-            }
-        }
-    }
-
-     /* Checking to see if the the file in ./copy1 is the same in ./copy3 in terms of ascii content and length */
-    memset(buff1, 0, get_length1);
-    memset(buff2, 0, get_length2);
-    if(copy12_same == 0 && (get_length1 == get_length3)  && (file_copy1 != -1) && (file_copy3 !=-1)){
-        lseek(file_copy1, 0*sizeof(char), SEEK_SET);
-        lseek(file_copy3, 0*sizeof(char), SEEK_SET);
-        write_bytes = 0;
-        while((check_bytes_recv1 = read(file_copy1,buff1,get_length1)) >= 0 && (check_bytes_recv3 = read(file_copy3,buff3,get_length3)) >= 0){
-        write_bytes += check_bytes_recv1;
-        if(strcmp(buff1,buff3) != 1){
-            break;
-        }
-        if(write_bytes == get_length1){
- 
-            copy13_same = 1;
-            break;
-            }
-        }
-    }
-
-     /* Checking to see if the the file in ./copy2 is the same in ./copy3 in terms of ascii content and length */
-    memset(buff1, 0, get_length1);
-    memset(buff3, 0, get_length3);
-    if ((copy12_same == 0) && (copy13_same == 0) && (get_length2 == get_length3)  && (file_copy2 != -1) && (file_copy3 !=-1)){
-        lseek(file_copy2, 0*sizeof(char), SEEK_SET);
-        lseek(file_copy3, 0*sizeof(char), SEEK_SET);
-        write_bytes = 0;
-        
-
-        while((check_bytes_recv2 = read(file_copy2,buff2,get_length2)) >= 0 && (check_bytes_recv3 = read(file_copy3,buff3,get_length3)) >= 0){
-            write_bytes += check_bytes_recv2;
-
-            sleep(2);
-            if(strcmp(buff2,buff3) != 0){
-                break;
-            }
-            if(write_bytes == get_length2){
-  
-                copy23_same = 1;
-                break;
-                }
-        }
-    }
-    memset(buff1, 0, get_length1);
-    memset(buff3, 0, get_length3);
-
-
-    lseek(file_copy1, 0*sizeof(char), SEEK_SET);
-    lseek(file_copy2, 0*sizeof(char), SEEK_SET);
-    free(buff1);
-    free(buff2);
-    free(buff3);
-
-    close(file_copy3);
-
-
-
-    
-    /* NOTE: the number of files that gives us no permission to open is always less than or equal to the number of files that exist */ 
-
-    /* calculates the number of files that gives no permission for us to open in directorys ./copyX */
-    int num_of_no_permission_files = copy1_no_permission + copy2_no_permission + copy3_no_permission;
-
- 
-    /* calculates the number of files that exists in the directory ./copyX */
-    int num_of_files_that_exist = copy1_found + copy2_found + copy3_found;
-
-    /* If all three files are not found or no permission, the status code should be 500 */
-    if((num_of_files_that_exist == 0) || (num_of_no_permission_files == 3)){
-       // printf("500 internal error\n");
-        close(file_copy1);
-        close(file_copy2);
-        f_void_intr_error(clientSocket);
-    }
-
-    /*  GET file with 2/3 or 3/3 files giving no permissions  */
-    if(num_of_no_permission_files >=2 ){                
-        //printf("403 error per post @385 endosred by Daniel Alvs #2 & 3 ALSO @336 #1\n");
-        close(file_copy1);
-        close(file_copy2);
-        f_void_client_error_forbid(clientSocket);
-    }
-
-    /*  GET file with 1/3 files giving no permissions, 1/3 files that don't exist, 1/3 files that do exist and we have permission     */
-    if((num_of_files_that_exist == 2) && (num_of_no_permission_files == 1)){                
-        //printf("500 error per post @385 endosred by Daniel Alvs #4 ALSO @336 #2\n");
-        close(file_copy1);
-        close(file_copy2);
-        f_void_intr_error(clientSocket);
-    }
-
-    /*  GET with 2/3 files that don't exist, and file with 1/3 files giving no permissions   */
-    if((num_of_files_that_exist == 1) && (num_of_no_permission_files == 1)){                
-        //printf("404 error per post @385 endosred by Daniel Alvs #5 ALSO @336 #3\n");
-        close(file_copy1);
-        close(file_copy2);
-
-        f_void_client_error_not_found(clientSocket);
-    }
-
-    // /*  GET with  1/3 files that don't exist, and 2/3 files giving no permissions    */
-    // if((num_of_files_that_exist == 2) && (num_of_no_permission_files == 2)){                
-    //     printf("403 error per post @385 endosred by Daniel Alvs #6 ALS @336 #4\n");
-    // }
-
-
-
- 
-    if(copy12_same == 1 || copy13_same == 1){
-
-        f_client_req_found(file_copy1,clientSocket); // sending HTTP 200 
-            ssize_t send_bytes = 0;
-
-            char *buffs = (char*)malloc(get_length1*sizeof(char*));
-
-            /* Store file contents */
-            while((child->content_length = read(file_copy1,buffs,sizeof(buffs))) != 0){
-                //printf("if you see then that means i am writing into the client socket\n");
-                send_bytes +=  write(clientSocket,buffs,child->content_length);
-                if(send_bytes == get_length1){break;}
-            }
-            close(file_copy1);
-            close(file_copy2);
-                
-            if(child->content_length == 0){
-                free(buffs);
-
-                return NULL;
-            }
-            else{ 
-                /* Internal error of 500 Content failuire*/
-                f_void_intr_error(clientSocket);
-                free(buffs);
-                return NULL;
-                    
-            }
-
-    }
-    else if(copy23_same == 1){
-
-            f_client_req_found(file_copy2,clientSocket);
-            ssize_t send_bytes;
-
-            char *buffs = (char*)malloc(get_length2*sizeof(char*));
-            
-            /* Store file contents */
-            while((child->content_length = read(file_copy2,buffs,sizeof(buffs))) != 0){
-                send_bytes =  write(clientSocket,buffs,child->content_length);
-                if(send_bytes == get_length2){break;}
-            }
-            close(file_copy1);
-            close(file_copy2);
-                
-            if(child->content_length == 0){
-                free(buffs);
-                return NULL;
-            }
-            else{ 
-                /* Internal error of 500 Content failuire*/
-                f_void_intr_error(clientSocket);
-                free(buffs);
-                return NULL;
-                    
-            }
-    }
-    else{
-        close(file_copy1);
-        close(file_copy2);
-        f_void_intr_error(clientSocket);
-        return NULL;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
+/////////////////////////////////////////////////////////////// GET MODULE //////////////////////////////////////////////////////////////////
 
 void *f_void_get_module(char *buffer,char *file_name,int clientSocket){
 
-    struct http_object *http_ptr,foo2;
-    http_ptr = &foo2;
+    struct http_object *http_ptr,http_mem_location;
+    http_ptr = &http_mem_location;
 
-    struct http_node *child, foo;
-    child = &foo;
+    struct http_node *child, content_len_mem;
+    child = &content_len_mem;
     http_ptr->master_key = lock_get;
 
     memset(buffer,'\0',HEADER_BUFFER);
 
-    if (Redundency == 1){
+    if(Redundency == 1){
         f_check_copy(file_name, clientSocket);
         return NULL;
     }
@@ -1124,12 +1146,10 @@ void *f_void_get_module(char *buffer,char *file_name,int clientSocket){
     if(fetch_file_fd != -1){ 
 
         int get_length;
-        
+         /* Get file size  & 200 OK */
         pthread_mutex_lock(&http_ptr->master_key);
         {
             f_client_req_found(fetch_file_fd,clientSocket);
-    
-            /* Get file size */
             struct stat buf;
             fstat(fetch_file_fd,&buf);
             get_length = buf.st_size;
@@ -1162,8 +1182,9 @@ void *f_void_get_module(char *buffer,char *file_name,int clientSocket){
         /* Internal error of 500 Content failuire */
         pthread_mutex_lock(&http_ptr->master_key);
         {
-            f_void_intr_error(clientSocket);
             free(buff);
+            f_void_intr_error(clientSocket);
+         
         }
         pthread_mutex_unlock(&http_ptr->master_key);
         return NULL; 
@@ -1171,42 +1192,49 @@ void *f_void_get_module(char *buffer,char *file_name,int clientSocket){
     }
     return NULL;
 }
-/* configure a little */
-void create_worker(pthread_t *workerArr, int *thread_array, int numWorker){
+
+/////////////////////////////////////////////// Create Worker | Dispatcher Thread Pool //////////////////////////////////////////////////////
+
+void create_worker(pthread_t *workerArr, int *thread_array,struct command_line_inputs *configs){
                                        
-    size_t         s1;                                                           
+    size_t s1;                                                           
     pthread_attr_t attr;                                                            
     char msg[100];
-    int index,ret,rc;                                                      
+    int index,ret,rc;       
+    int numWorker = configs->N_threads;
+    free(&configs);                                               
                                                                                 
    rc = pthread_attr_init(&attr);                                               
-   if (rc == -1) {                                                              
+   
+   if(rc == -1){                                                              
       perror("error in pthread_attr_init");                                     
       exit(1);                                                                  
    }                                                                            
-                                                                                
+    /* Make thread safe set stack size attributes */                                                               
    s1 = 4096;                                                                   
    rc = pthread_attr_setstacksize(&attr, s1);                                   
-   if (rc == -1) {                                                              
+   
+   if(rc == -1){                                                              
       perror("error in pthread_attr_setstacksize");                             
       exit(2);                                                                  
    } 
-
-    printf("Thread count still : %d\n",numWorker);
-
+    /* Dispatcher - N Thread Pool */
 	for(index = 0; index < numWorker; index++){
-		thread_array[index] = index;
-
-		ret = pthread_create(&workerArr[index],&attr, worker_thread, &thread_array[index]);
-		printf("Hi ... %d\n", index);
-		if(ret){
-			sprintf(msg, "Failed on pthread_create()%d", ret);
+        
+        thread_array[index] = index;
+        ret = pthread_create(&workerArr[index],&attr, worker_thread, &thread_array[index]);
+        
+        if(ret){
+			sprintf(msg, "Failed on pthread_create()%d\n", ret);
             exit(EXIT_FAILURE); 
 		}		
 	}
+    free(&thread_array); 
     free(&workerArr);
-    free(&thread_array);  
 }
+
+
+/////////////////////////////////////////////// Worker Thread | Process Thread Request //////////////////////////////////////////////////////
 
 void *worker_thread(void *args){
     
@@ -1215,6 +1243,7 @@ void *worker_thread(void *args){
 
     int id = *((int *)args); 
 	int clientSocket;
+    
 
 
     while(LIVE){
@@ -1240,12 +1269,12 @@ void *worker_thread(void *args){
         size_t bytes_read;
         int msgsize = 0;
 
-        //read the clients message
+        /* read the clients message */
         while((bytes_read = read(clientSocket,buffer+msgsize,sizeof(buffer)-msgsize-1)) > 0){
             msgsize += bytes_read;
             if(msgsize > HEADER_BUFFER-1 || buffer[msgsize-1] == '\n')break;
         }
-        buffer[msgsize-1] = 0; // null terminate message and remove the \n
+        buffer[msgsize-1] = 0; /* null terminate message and remove the \n */
 
         char request[4],file[50],protocol[10];
         sscanf(buffer,"%s %s %s",request,file, protocol);
@@ -1275,7 +1304,7 @@ void *worker_thread(void *args){
         node_parser->client_connect = clientSocket;
         
 
-        /* Module Check Box - Die on failure */
+        /* Master Module Check Box - Thread Dies on failure on failure */
         bool die_on_failure = f_bool_check_vitality(node_parser->file_name,node_parser->protocol,node_parser->request,node_parser->client_connect);
         
         if(die_on_failure == false){
@@ -1288,10 +1317,6 @@ void *worker_thread(void *args){
         std::stringstream ss;
         ss << node_parser->file_name;
         ss >> string_to_parse;
-
-        // Note client ID is always changing when threading ++++
-        // client id does not change when threading ++++
-        // need a way to remember past iteration ? But how
         
         /* Fancy hashing */
         std::unordered_map<std::string,int>hashing;
@@ -1299,21 +1324,22 @@ void *worker_thread(void *args){
         /* hash id [file n] = id & convert too c-str */
         hashing[string_to_parse.c_str()] = node_parser->id;
         
-        std::unordered_map<std::string, int>::iterator itr;
+        /* initialize iterator to search up valid existing id keys */
+        std::unordered_map<std::string, int>::iterator lookup;
 
-        for(itr = hashing.begin(); itr != hashing.end(); itr++){ 
-            printf("First :%s ID Num :%d\n",itr->first.c_str(),itr->second);
+        for(lookup = hashing.begin(); lookup != hashing.end(); lookup++){ 
+            
 
             if(strcmp(node_parser->request,"PUT") == 0 && strcmp(node_parser->request,"GET") != 0){
                 f_void_put_module(buffer,node_parser->file_name,node_parser->client_connect);
                 memset(node_parser,0,sizeof(http_object));
-                continue;
+                return NULL;
             }
 
             if(strcmp(node_parser->request,"GET") == 0 && strcmp(node_parser->request,"PUT") != 0){
                 f_void_get_module(buffer,node_parser->file_name,node_parser->client_connect);
                 memset(node_parser,0,sizeof(http_object));
-                continue;
+                return NULL;
             }   
         }
     }

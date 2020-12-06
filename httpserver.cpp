@@ -1,17 +1,12 @@
 /*
-    Cristian C. Castillo & Baubak Saadat
-    Professor Nawab
-    UCSC CSE 130
-    HTTPSERVER Assignment 2
+    Cristian C. Castillo
 */
-
-// global
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 #include "httpserver_definitions.cpp"
 
 int main(int argc, char **argv){
-	// change back to nothing for client if malfunction of files
 
     /* Command Line Struct Data */
     struct command_line_inputs *cmd,get_cmd;
@@ -39,7 +34,7 @@ int main(int argc, char **argv){
         }
     }
     if(counter_left_off == 0){
-        printf("INVALID IP ADDRESS OR NOT ENTERED.\n");
+        perror("Invalid <ip address> or <ip address> not entered.\n");
         exit(EXIT_FAILURE);
     }
     portNumber = "80";
@@ -72,7 +67,7 @@ int main(int argc, char **argv){
     serverSocket = socket(res->ai_family,res->ai_socktype,res->ai_protocol);
     if(serverSocket < 0){ f_void_socket_error(serverSocket);}   
 
-    /* Reuse socket addr*/
+    /* Reuse socket addr */
     if((ret=setsockopt(serverSocket, SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int))) < 0){
         f_void_setsocket_error(ret);
     }
@@ -87,49 +82,75 @@ int main(int argc, char **argv){
     /* Listen to sock & backlog */
     if((ret = listen(serverSocket,BACKLOG)) == -1){ f_void_listen_error(ret);}
 
-    /* Marshall the struct - get rdy to pack msg */
+    /* Marshall the struct - get rdy to pack redundancy message */
     struct marshall *message = (struct marshall *)malloc(sizeof(marshall)); 
-    
+   
     if(cmd->Redundancy == 1){message->is_redundant = cmd->Redundancy;}
     if(cmd->Redundancy == 1){Redundency = 1;}
 
+    /* Allocate Threads on the fly */
+    int *threader = ((int*)malloc(sizeof(int)*cmd->N_threads));
+    pthread_t *dispatcher_thread = ((pthread_t*)malloc(sizeof(pthread_t)*cmd->N_threads));
 
-    int *threader = (int*)malloc(sizeof(int)*cmd->N_threads);
-    pthread_t *dispatcher_thread = (pthread_t*)malloc(sizeof(pthread_t)*cmd->N_threads);
-    create_worker(dispatcher_thread,threader,cmd->N_threads);
-    printf("Number of threads dispatched %d\n",cmd->N_threads);
-    printf("Reduancy : %d\n",message->is_redundant);
-  
-  
-    sleep(2);
-    printf("\nHi there.......\n");
-    int clientSocket = 0,flagSignal;
+    /* Let the program breath */
+    sleep(double(1.5));
+    int clientSocket = 0;
+    int counter = 0;
+    int flagSignal;
 
     while(LIVE){
-    	
-        // char data;
-        // if(recv(clientSocket,&data,1,MSG_PEEK <= 0)){
-               clientSocket = accept(serverSocket,(struct sockaddr *)&client_addr, &addr_size);
-        // }
+
+ ///////////////////////////////////////////////////////////////////////// Redundancy ///////////////////////////////////////////////////////////////////////////
+
+        if(cmd->Redundancy == 1){
        
-           
-        printf("Client connection : %d\n",clientSocket);
-    
-        /* Put that client to the queue, waiting for worker threads to handle it */
-		pthread_mutex_lock(&mutex);
+            
+            while(LIVE){
+
+                    clientSocket = accept(serverSocket,(struct sockaddr *)&client_addr, &addr_size);
+                    create_worker(dispatcher_thread,threader,&get_cmd);
+                  
+                    /* Put that client to the queue, waiting for worker threads to handle it */
+                    pthread_mutex_lock(&mutex);
+                    {
+                        flagSignal = 0;
+                        /* Workers are waiting -> Send Signal */
+                        if(items.empty())
+                            flagSignal = 1;
+                        
+                        items.push(clientSocket);
+
+                        if(flagSignal)
+                            pthread_cond_broadcast(&client_in_queue);
+                    }
+                    pthread_mutex_unlock(&mutex);
+                    continue;
+            }
+        }
+
+///////////////////////////////////////////////////////////////////////// Multithreading ///////////////////////////////////////////////////////////////////////////
+       
+        clientSocket = accept(serverSocket,(struct sockaddr *)&client_addr, &addr_size);
+        connections.push_back(clientSocket);
+        create_worker(dispatcher_thread,threader,&get_cmd);
+
+
+        pthread_mutex_lock(&mutex);
         {
             flagSignal = 0;
             /* Workers are waiting -> Send Signal */
             if(items.empty())
                 flagSignal = 1;
-                
-            items.push(clientSocket);
+            
+            items.push(connections[counter]);
 
             if(flagSignal)
                 pthread_cond_broadcast(&client_in_queue);
         }
-		pthread_mutex_unlock(&mutex);
-    }
-    free(res);
-    exit(0);
+        pthread_mutex_unlock(&mutex); 
+        counter++;          
+    }       
+
+    freeaddrinfo(res);
+    exit(EXIT_SUCCESS);
 }

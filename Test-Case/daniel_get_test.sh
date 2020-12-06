@@ -49,72 +49,35 @@ curl  http://localhost:8080 --request-target FILENAME46 > cmd47.output 2> stderr
 curl  http://localhost:8080 --request-target FILENAME47 > cmd48.output 2> stderr48.output &
 curl  http://localhost:8080 --request-target FILENAME48 > cmd49.output 2> stderr49.output &
 curl  http://localhost:8080 --request-target FILENAME49 > cmd50.output 2> stderr50.output &
-curl  http://localhost:8080 --request-target FILENAME50 > cmd51.output 2> stderr19.output &
-curl  http://localhost:8080 --request-target FILENAME51 > cmd52.output 2> stderr20.output &
-curl  http://localhost:8080 --request-target FILENAME52 > cmd53.output 2> stderr21.output &
-curl  http://localhost:8080 --request-target FILENAME53 > cmd54.output 2> stderr22.output &
-curl  http://localhost:8080 --request-target FILENAME54 > cmd55.output 2> stderr23.output &
-curl  http://localhost:8080 --request-target FILENAME55 > cmd56.output 2> stderr24.output &
-curl  http://localhost:8080 --request-target FILENAME56 > cmd57.output 2> stderr25.output &
-curl  http://localhost:8080 --request-target FILENAME57 > cmd58.output 2> stderr26.output &
-curl  http://localhost:8080 --request-target FILENAME58 > cmd59.output 2> stderr27.output &
-curl  http://localhost:8080 --request-target FILENAME59 > cmd60.output 2> stderr28.output &
-curl  http://localhost:8080 --request-target FILENAME60 > cmd61.output 2> stderr29.output &
-curl  http://localhost:8080 --request-target FILENAME62 > cmd62.output 2> stderr31.output &
-curl  http://localhost:8080 --request-target FILENAME63 > cmd63.output 2> stderr32.output &
-curl  http://localhost:8080 --request-target FILENAME64 > cmd64.output 2> stderr33.output &
-curl  http://localhost:8080 --request-target FILENAME65 > cmd65.output 2> stderr34.output &
-curl  http://localhost:8080 --request-target FILENAME66 > cmd66.output 2> stderr35.output &
-curl  http://localhost:8080 --request-target FILENAME67 > cmd67.output 2> stderr36.output &
-curl  http://localhost:8080 --request-target FILENAME68 > cmd68.output 2> stderr37.output &
-curl  http://localhost:8080 --request-target FILENAME69 > cmd69.output 2> stderr38.output &
-curl  http://localhost:8080 --request-target FILENAME70 > cmd70.output 2> stderr39.output &
-curl  http://localhost:8080 --request-target FILENAME71 > cmd71.output 2> stderr40.output &
-curl  http://localhost:8080 --request-target FILENAME72 > cmd72.output 2> stderr41.output &
-curl  http://localhost:8080 --request-target FILENAME73 > cmd73.output 2> stderr42.output &
-curl  http://localhost:8080 --request-target FILENAME74 > cmd74.output 2> stderr43.output &
-curl  http://localhost:8080 --request-target FILENAME75 > cmd75.output 2> stderr44.output &
-curl  http://localhost:8080 --request-target FILENAME76 > cmd76.output 2> stderr45.output &
-curl  http://localhost:8080 --request-target FILENAME77 > cmd77.output 2> stderr46.output &
-curl  http://localhost:8080 --request-target FILENAME78 > cmd78.output 2> stderr47.output &
-curl  http://localhost:8080 --request-target FILENAME79 > cmd79.output 2> stderr48.output &
-curl  http://localhost:8080 --request-target FILENAME80 > cmd80.output 2> stderr49.output &
-curl  http://localhost:8080 --request-target FILENAME81 > cmd81.output 2> stderr50.output &
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+curl  http://localhost:8080 --request-target FILENAME50 > cmd51.output 2> stderr51.output &
+curl  http://localhost:8080 --request-target FILENAME51 > cmd52.output 2> stderr52.output &
+curl  http://localhost:8080 --request-target FILENAME52 > cmd53.output 2> stderr53.output &
+curl  http://localhost:8080 --request-target FILENAME53 > cmd54.output 2> stderr54.output &
+curl  http://localhost:8080 --request-target FILENAME54 > cmd55.output 2> stderr55.output &
+curl  http://localhost:8080 --request-target FILENAME55 > cmd56.output 2> stderr56.output &
+curl  http://localhost:8080 --request-target FILENAME56 > cmd57.output 2> stderr57.output &
+curl  http://localhost:8080 --request-target FILENAME57 > cmd58.output 2> stderr58.output &
+curl  http://localhost:8080 --request-target FILENAME58 > cmd59.output 2> stderr59.output &
+curl  http://localhost:8080 --request-target FILENAME59 > cmd60.output 2> stderr60.output &
+curl  http://localhost:8080 --request-target FILENAME60 > cmd61.output 2> stderr61.output &
+curl  http://localhost:8080 --request-target FILENAME61 > cmd62.output 2> stderr62.output &
+curl  http://localhost:8080 --request-target FILENAME62 > cmd63.output 2> stderr63.output &
+curl  http://localhost:8080 --request-target FILENAME63 > cmd64.output 2> stderr64.output &
+curl  http://localhost:8080 --request-target FILENAME64 > cmd65.output 2> stderr65.output &
+curl  http://localhost:8080 --request-target FILENAME65 > cmd66.output 2> stderr66.output &
+curl  http://localhost:8080 --request-target FILENAME66 > cmd67.output 2> stderr67.output &
+curl  http://localhost:8080 --request-target FILENAME67 > cmd68.output 2> stderr68.output &
+curl  http://localhost:8080 --request-target FILENAME68 > cmd69.output 2> stderr69.output &
+curl  http://localhost:8080 --request-target FILENAME69 > cmd70.output 2> stderr70.output &
+curl  http://localhost:8080 --request-target FILENAME70 > cmd71.output 2> stderr71.output &
+curl  http://localhost:8080 --request-target FILENAME71 > cmd72.output 2> stderr72.output &
+curl  http://localhost:8080 --request-target FILENAME72 > cmd73.output 2> stderr73.output &
+curl  http://localhost:8080 --request-target FILENAME73 > cmd74.output 2> stderr74.output &
+curl  http://localhost:8080 --request-target FILENAME74 > cmd75.output 2> stderr75.output &
+curl  http://localhost:8080 --request-target FILENAME75 > cmd76.output 2> stderr76.output &
+curl  http://localhost:8080 --request-target FILENAME76 > cmd77.output 2> stderr77.output &
+curl  http://localhost:8080 --request-target FILENAME77 > cmd78.output 2> stderr78.output &
+curl  http://localhost:8080 --request-target FILENAME78 > cmd79.output 2> stderr79.output &
+curl  http://localhost:8080 --request-target FILENAME79 > cmd80.output 2> stderr80.output &
+curl  http://localhost:8080 --request-target FILENAME80 > cmd81.output 2> stderr81.output &
+curl  http://localhost:8080 --request-target FILENAME81 > cmd82.output 2> stderr82.output &

@@ -19,7 +19,7 @@ The following installations are required to execute code:
 - Use this program only as a reference to learn about HTTP Server Socket Programming. Should you decide to use this program in the Academia, credit the author and source. Also note do not copy/plagiarise this work for personal academic advancement, you risk dire consequences such as being given a failing grade, and possibly expelled.
 
 ## Application Terminal GIF Overview
-<img src="https://recordit.co/NPa5plqqxr/gif/notify" width=550><br>
+<img src="https://recordit.co/NPa5plqqxr/gif/notify" width=650><br>
 
 - 80 files (each file 16Kib) generating instantly
 

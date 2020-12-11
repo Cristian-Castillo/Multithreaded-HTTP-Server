@@ -10,6 +10,8 @@ The following installations are required to execute code:
 
 - Clang
 
+- Hit the like if you think its useful!
+
 --------
 ## Disclaimer
 - Do not use this program for commerical usage. I am not responsible for any liabilities that incur should you set this out in the public, and please use at one's own risk.

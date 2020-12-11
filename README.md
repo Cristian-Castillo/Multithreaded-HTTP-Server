@@ -10,7 +10,7 @@ The following installations are required to execute code:
 
 - Clang
 
-- Hit the like if you think its useful!
+- Optional: Hit the like if you think its useful!
 
 --------
 ## Disclaimer

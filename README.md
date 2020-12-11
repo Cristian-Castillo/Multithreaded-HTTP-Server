@@ -6,7 +6,7 @@
 The following installations are required to execute code:
 - Ubuntu 18.04 environment
 
-- Virtual Machine ß
+- Virtual Machine 
 
 - Clang
 

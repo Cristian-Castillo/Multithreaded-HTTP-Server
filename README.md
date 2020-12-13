@@ -21,7 +21,7 @@ The following installations are required to execute code:
 ## Application Terminal GIF Overview
 <img src="https://recordit.co/NPa5plqqxr/gif/notify" width=650><br>
 
-- 80 files (each file 16Kib) generating instantly
+- Example of large amount of files (each file 16Kib) generating instantly!
 
 ## Directory Contents 📂
 - httpserver.cpp: main driver program.
